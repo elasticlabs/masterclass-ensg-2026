@@ -39,7 +39,7 @@ Dans ce lab, nous allons utiliser Docker Compose pour déployer une infrastructu
 - **GeoServer** : Serveur de diffusion de données géospatiales
 
 Comme la plupart des aspects de docker, `compose` est très bien documenté! 
-- RDV sur 
+- RDV sur https://docs.docker.com/reference/compose-file/
 
 ---
 

@@ -136,7 +136,7 @@ docker compose up -d
 
 Accès :
 
-- http://localhost:8080
+- http://172.24.0.30:8080
 
 👉 Observer les logs de Portainer.
 
@@ -152,20 +152,28 @@ Pourquoi Filebrowser ?
 ### Ajout du service 
 
 ```bash
-    image: filebrowser/filebrowser:latest
-    container_name: ensg-filebrowser
-    restart: unless-stopped
-    volumes:
-      - ./data:/srv
-    command: ["--noauth"]
-    networks:
-      ensg_sdi:
-        ipv4_address: 172.24.0.40
+filebrowser:
+  image: hurlenko/filebrowser
+  container_name: ${COMPOSE_PROJECT_NAME}_filebrowser
+  restart: unless-stopped
+  environment:
+    - PUID=$(id -u)
+    - PGID=$(id -g)
+    - FB_BASEURL=/data
+# The list of avalable options can be found here : https://filebrowser.org/cli/filebrowser#options.
+  expose:
+    - "443"
+  volumes:
+    - ./data/filebrowser/filebrowser.db:/database/filebrowser.db
+    - ./data/filebrowser/config:/config/
+  networks:
+    ensg_sdi:
+      ipv4_address: 172.24.0.40
 ```
 
 Accès :
 
-- http://localhost:8082
+- http://72.24.0.40:8080/data
 
 👉 Explorer le dossier `data/`.
 

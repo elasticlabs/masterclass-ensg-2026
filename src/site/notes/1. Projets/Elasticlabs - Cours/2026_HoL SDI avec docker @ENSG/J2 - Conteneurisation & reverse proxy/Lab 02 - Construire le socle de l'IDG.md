@@ -175,41 +175,17 @@ Accès :
 
 - http://72.24.0.40:8080/data
 
-👉 Explorer le dossier `data/`.
+Lors du 1er lancement, observez les logs du conteneur afin de récupérer l'utilisateur par défaut (`admin`), et son mot de passe généré automatiquement une seule fois à la 1ère connexion. 
 
-## 4. Ajouter des healthchecks
-
-### 5.1 Pourquoi ?
-
-- un conteneur “lancé” ≠ un service “opérationnel”
-- le **healthcheck** est un signal système 
-
-### 5.2 Exemples de healthchecks
-
-#### Portainer
-
-```bash
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9000"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+```docker
+docker compose logs filebrowser
 ```
 
-#### Dozzle
+👉 Explorer le dossier `data/`
 
-```bash
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-```
+Par la suite, afin de permettre la gestion des données de vos COTS (e.g. geoserver, etc.) via une interface graphique, il sera nécessaire d'associer les volumes dédiés tels que déclarés dans par exemple `geoserver`, dans la liste des volumes de `filebrowser` également. 
 
-Vérification avec commande `docker ps`, observez la colonne `STATUS` `
-
-
-## 5. Ajouter PostgreSQL avec PostGIS
+## 4. Ajouter PostgreSQL avec PostGIS
 
 Nous allons maintenant ajouter un service PostgreSQL avec l'extension PostGIS.
 
@@ -254,7 +230,7 @@ docker ps
 Testez la connexion :
 
 ```bash
-docker exec -it postgis psql -U ensgadmin -d ensgdb
+docker compose exec -it postgis psql -U ensgadmin -d ensgdb
 ```
 
 ### Test de connexion depuis VS Code
@@ -289,10 +265,12 @@ Ajoutez le service `pgAdmin` dans `docker-compose.yml` :
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@ensg.eu
       PGADMIN_DEFAULT_PASSWORD: ensgpassword
+      # Hosting sous sous-répertoire (/pgadmin)
+      #- SCRIPT_NAME=/pgadmin
     volumes:
       - pgadmin_data:/var/lib/pgadmin
     expose:
-      - "5050:80"
+      - "5050"
     networks:
       ensg_sdi:
         ipv4_address: 172.24.0.20
@@ -304,14 +282,14 @@ Ajoutez le service `pgAdmin` dans `docker-compose.yml` :
 docker-compose up -d pgadmin
 ```
 
-Accédez à `http://172.24.0.20:5050` et connectez-vous avec :
+Accédez à `http://172.24.0.20` et connectez-vous avec :
 
 - **Email** : `admin@ensg.eu`
 - **Mot de passe** : `ensgpassword`
 
-### Installation des extensions PostgreSQL
+### Installation des extensions PostgreGIS
 
-Dans l'interface pgAdmin, exécutez les commandes suivantes. Comment expliquez-vous les résultats remontés ?
+Dans l'interface pgAdmin, commencez par enregistrer le serveur `postgis`. Exécutez ensuite  les commandes suivantes. Comment expliquez-vous les résultats remontés ?
 
 ```sql
 CREATE EXTENSION postgis;
@@ -324,44 +302,101 @@ CREATE EXTENSION pg_stat_statements;
 
 GeoServer permet de diffuser des données géospatiales via des services OGC.
 
+### Ajout d'un `healthcheck` à postgis
+
+Geoserver dépend très fortement de ses founisseurs de données ; on va donc s'assurer qu'il ne cherche pas à démarrer avant que ces derniers soient prets. 
+
+Ajouter un `healthcheck` au service `postgis` 
+
+```bash
+    healthcheck:
+      test: "PGPASSWORD=${POSTGRES_PASS} pg_isready -h 127.0.0.1 -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
+```
+
 ### Ajout du service GeoServer
 
 Ajoutez le bloc suivant dans `docker-compose.yml` :
 
 ```yaml
   geoserver:
-    image: kartoza/geoserver
-    container_name: geoserver
-    restart: always
-    environment:
-      # - RDV sur https://github.com/kartoza/docker-geoserver?tab=readme-ov-file#environment-variables pour une liste exhaustive, à vous de jouer!
-      - TODO
+    container_name: ${COMPOSE_PROJECT_NAME}_geoserver
+    image: kartoza/geoserver:${GS_VERSION}
     expose:
       - "8080"
+    depends_on:
+      postgis:
+        condition: service_healthy
+    environment:
+      - GEOSERVER_ADMIN_PASSWORD=${GEOSERVER_ADMIN_PASSWORD}
+      - GEOSERVER_ADMIN_USER=${GEOSERVER_ADMIN_USER}
+      - INITIAL_MEMORY=${INITIAL_MEMORY}
+      - MAXIMUM_MEMORY=${MAXIMUM_MEMORY}
+      - GEOSERVER_DATA_DIR=${GEOSERVER_DATA_DIR}
+      - GEOWEBCACHE_CACHE_DIR=${GEOWEBCACHE_CACHE_DIR}
+      - ROOT_WEBAPP_REDIRECT=${ROOT_WEBAPP_REDIRECT}
+      - TOMCAT_EXTRAS=${TOMCAT_EXTRAS}
+      - SAMPLE_DATA=${SAMPLE_DATA}
+      # Extensions set to be installed
+      - STABLE_EXTENSIONS=${STABLE_EXTENSIONS}
+      - COMMUNITY_EXTENSIONS=${COMMUNITY_EXTENSIONS}
     volumes:
-      - geoserver_data:/opt/geoserver/data_dir
-      - geoserver_bal:/opt/geoserver/data_dir/_BAL_
-      - geoserver_settings:/settings
-    networks:
-      sdi_apps:
-        ipv4_address: 172.24.0.11
+      - geoserver-data:/opt/geoserver/data_dir
+      - geoserver-injected-data:/opt/geoserver/data_dir/injected
+      - geoserver-settings:/settings
+    healthcheck:
+      test: "curl --fail --silent --write-out 'HTTP CODE : %{http_code}\n' --output /dev/null -u ${GEOSERVER_ADMIN_USER}:'${GEOSERVER_ADMIN_PASSWORD}' http://localhost:8080/geoserver/rest/about/version.xml"
+      interval: 1m30s
+      timeout: 10s
+      retries: 3
+    networks:
+      ensg_sdi:
+        ipv4_address: 172.24.10.3
 ```
 
-> [!NOTE]- Variables d'environnement geoserver - Solution partielle
->    - "CORS_ENABLED=true"
-      - GEOSERVER_ADMIN_PASSWORD=geoserver
-      - GEOSERVER_ADMIN_USER=admin
-      - INITIAL_MEMORY=500M
-      - MAXIMUM_MEMORY=1G
-      - GEOSERVER_DATA_DIR=/opt/geoserver/data_dir
-      - GEOWEBCACHE_CACHE_DIR=/opt/geoserver/data_dir/gwc
-      - ROOT_WEBAPP_REDIRECT=true
-      - TOMCAT_EXTRAS=false
-      - SAMPLE_DATA=false
-      # Extensions set to be installed
-      - "INSTALL_EXTENSIONS=true"
-      - STABLE_EXTENSIONS=css-plugin,importer-plugin,wmts-multi-dimensional-plugin
-      - COMMUNITY_EXTENSIONS=backup-restore-plugin,ogcapi-plugin,smart-data-loader-plugin,wmts-styles-plugin
+Ajoutez le contenu suivant dans un fichier `.env` situé au meme niveau que votre fichier de composition : 
+
+```bash
+#
+# -> Project name
+COMPOSE_PROJECT_NAME=ensg-sdi-hub
+
+#
+# -> PostGIS
+# kartoza/postgis env variables https://github.com/kartoza/docker-postgis
+POSTGIS_VERSION=16-3.4
+POSTGRES_DB=geoserver
+POSTGRES_USER=postgis
+POSTGRES_PASS=postgis
+ALLOW_IP_RANGE=0.0.0.0/0
+POSTGRES_PORT=32767
+# -> pgAdmin4
+PGADMIN_MAIL=admin@ensg.eu
+PGADMIN_PASSWORD=postgis
+
+#
+# -> Geoserver
+GS_VERSION=2.24.2
+GEOSERVER_ADMIN_USER=admin
+GEOSERVER_ADMIN_PASSWORD=geoserver
+# https://docs.geoserver.org/latest/en/user/datadirectory/setting.html
+GEOSERVER_DATA_DIR=/opt/geoserver/data_dir
+# https://docs.geoserver.org/latest/en/user/geowebcache/config.html#changing-the-cache-directory
+GEOWEBCACHE_CACHE_DIR=/opt/geoserver/data_dir/gwc
+# Show the tomcat manager in the browser
+TOMCAT_EXTRAS=false
+ROOT_WEBAPP_REDIRECT=true
+# https://docs.geoserver.org/stable/en/user/production/container.html#optimize-your-jvm
+INITIAL_MEMORY=2G
+MAXIMUM_MEMORY=4G
+#
+# Data and extensions
+SAMPLE_DATA=false
+# Full compatibility list : https://github.com/kartoza/docker-geoserver/blob/master/build_data/ Look for *_plugins.txt
+STABLE_EXTENSIONS=css-plugin,imagemap-plugin,importer-plugin,wmts-multi-dimensional-plugin,ysld-plugin
+COMMUNITY_EXTENSIONS=backup-restore-plugin,geopkg-plugin,notification-plugin,ogcapi-plugin,smart-data-loader-plugin,wmts-styles-plugin
+```
+
+Attention, plusieurs choses sont modifiées ici! Saurez-vous deviner lesquelles ? 
 
 ### Déploiement
 
@@ -386,6 +421,22 @@ Accédez à `http://172.24.0.11:8080/geoserver` et connectez-vous avec :
     - **Port** : `5432`
 4. Cliquez sur `Save`
 
+### Ajouter un client carto efficace : `mapstore2`
+
+Ajoutez simplement le service suivant dans votre `docker-compose.yml` 
+
+```bash
+  #  -> MapStore2
+  mapstore2:
+    image: geosolutionsit/mapstore2:latest
+    container_name: ${COMPOSE_PROJECT_NAME}_mapstore2
+    restart: unless-stopped
+    expose: 
+      - "8080"
+    networks:
+      eNSG_SDI:
+        ipv4_address: 172.24.10.5
+```
 
 ## 8. Ajout et configuration du reverse proxy NGinx
 
@@ -396,14 +447,258 @@ Dans ce lab, on configure :
 127.0.0.1  ensg-sdi.docker
 ```
 
-Puis on chercher à mettre en oeuvre les accès suivants :
+On chercher à mettre en oeuvre les accès suivants :
 
+-  http://ensg-sdi.docker/ ✅ Mapstore2
 - `http://ensg-sdi.docker/geoserver` ✅ (GeoServer est nativement sous `/geoserver`) [Documentation GeoServer](https://docs.geoserver.org/main/en/user/installation/docker.html?utm_source=chatgpt.com)
 - `http://ensg-sdi.docker/files` ✅ (Filebrowser avec baseurl) [GitHub+1](https://github.com/filebrowser/filebrowser/issues/1557?utm_source=chatgpt.com)
 - `http://ensg-sdi.docker/logs` ✅ (Dozzle avec `DOZZLE_BASE`) [Dozzle+1](https://dozzle.dev/guide/changing-base?utm_source=chatgpt.com)
 - `http://ensg-sdi.docker/pgadmin` ✅ (pgAdmin sous sous-répertoire via `SCRIPT_NAME`)
 
+La démarche peut se révéler très laborieuse pour certains logiciels qui n'ont pas été spécifiquement conçus pour se placer derrière un proxy. Il est parfois illusoire d'espérer configurer un service sous forme de `sous-dossier`. 
 
+Le principe : 
+- Inventaire des URL désirées ✅
+- Vérification des possibilités des COTS ✅
+- Création du services de proxy
+- Configuration des règles d'aiguillage
+- Configuration des COTS concernés
+
+### Ajout du service nginx-proxy
+
+Ajoutez le bloc suivant dans votre `docker-compose.yml` 
+
+```bash
+  #
+  # Project reverse proxy
+  nginx-proxy:
+    image: ${COMPOSE_PROJECT_NAME}_proxy:latest
+    container_name: ${COMPOSE_PROJECT_NAME}_proxy
+    restart: unless-stopped
+    expose:
+      - "80"
+    depends_on:
+      - pgadmin
+      - portainer
+      - filebrowser
+    build:
+      context: ./config/nginx-proxy
+    environment:
+      - DHPARAM_GENERATION=false
+      - VIRTUAL_PORT=80
+      - VIRTUAL_HOST=hub.ensg-sdi.docker
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+    profiles:
+      - proxyfied
+    networks:
+      ensg-sdi:
+        ipv4_address: 172.24.0.2
+```
+
+Remarquez la directive `build` : elle pointe vers le répertoire contenant à minima un fichier Dockerfile de construction de service. 
+
+### Configuration du proxy
+
+Créez ce répertoire, et éditez le fichier `./config/Dockerfile` 
+
+```Dockerfile
+FROM nginx:alpine
+
+COPY proxy.conf /etc/nginx/proxy.conf
+COPY ensg-sdi.docker.conf /etc/nginx/conf.d/ensg-sdi.docker.conf
+```
+
+Discuter avec l'enseignant sur la signification de ces directives. 
+
+Le fichier `proxy.conf` contiendra les paramètres généraux du proxy. Créer le fichier avec les valeurs par défaut suivantes : 
+
+```proxy.conf
+## Headers
+proxy_set_header Host $host;
+proxy_set_header X-Original-URL $scheme://$http_host$request_uri;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Forwarded-Host $http_host;
+proxy_set_header X-Forwarded-Uri $request_uri;
+proxy_set_header X-Forwarded-Ssl on;
+proxy_set_header X-Forwarded-For $remote_addr;
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header Connection "";
+
+## Basic Proxy Configuration
+client_body_buffer_size 128k;
+proxy_next_upstream error timeout invalid_header http_500 http_502 http_503; ## Timeout if the real server is dead.
+proxy_redirect  http://  $scheme://;
+proxy_http_version 1.1;
+proxy_cache_bypass $cookie_session;
+proxy_no_cache $cookie_session;
+proxy_buffers 64 256k;
+
+## Advanced Proxy Configuration
+send_timeout 5m;
+proxy_read_timeout 360;
+proxy_send_timeout 360;
+proxy_connect_timeout 360;
+```
+
+#### Aiguillage de notre IDG
+
+Le fichier `ensg-sdi.docker.conf` nous intéresse plus, et va contenir les règles d'aiguillage des outils implémentés so far. 
+
+```conf
+log_format sdi-vhost '$host $remote_addr - $remote_user [$time_local] '
+                 '"$request" $status $body_bytes_sent '
+                 '"$http_referer" "$http_user_agent"';
+
+##
+#client_max_body_size 4G;
+#large_client_header_buffers 4 32k;
+
+#
+# Set resolver to docker default DNS
+# resolver 127.0.0.11 valid=30s;
+
+# server blocks definition
+server {
+        #
+        # Doit refléter le nom de domaine couvert par ce block server
+        server_name ensg-sdi.docker;
+
+        listen 80 ;
+        access_log /var/log/nginx/access.log sdi-vhost;
+        
+        #
+        # -> 
+        location / {
+            include /etc/nginx/proxy.conf;
+
+        }
+
+        # -> Geoserver
+        # See (https://github.com/kartoza/docker-geoserver)
+        location /geoserver {
+            # On définit dans une variable pour éviter un crash du proxy en cas d'indispo du service
+            set $upstream geoserver:8080;
+            
+            #
+            proxy_pass http://$upstream/geoserver;
+            proxy_set_header    Host            $host;
+            proxy_set_header    X-Real-IP       $remote_addr;
+            proxy_set_header    X-Forwarded-for $remote_addr;
+            port_in_redirect off;
+            proxy_connect_timeout 600;
+            proxy_set_header X-Script-Name /geoserver;
+        }
+
+        # -> Mapstore2 
+        # See Tomcat behind reverse proxy -> https://clouding.io/hc/en-us/articles/360010691359-How-to-Install-Tomcat-with-Nginx-as-a-Reverse-Proxy-on-Ubuntu-18-04
+        location /mapstore {
+            # On définit dans une variable pour éviter un crash du proxy en cas d'indispo du service
+            set $upstream mapstore2:8080;
+
+            #
+            proxy_pass http://$upstream/mapstore;
+            proxy_set_header X-Forwarded-Host $host;
+            proxy_set_header X-Forwarded-Server $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header Host $host;
+        }
+        
+        #
+        # -> Filebrowser : files admin web GUI for our stack
+        location /data {
+            # On définit dans une variable pour éviter un crash du proxy en cas d'indispo du service
+            set $upstream filebrowser:8080;
+            
+            # prevents 502 bad gateway error
+            proxy_buffers 8 32k;
+            proxy_buffer_size 64k;
+            client_max_body_size 75M;
+
+            # redirect all HTTP traffic to localhost:8088;
+            proxy_pass http://$upstream;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header Host $http_host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            #proxy_set_header X-NginX-Proxy true;
+
+            # enables WS support
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_read_timeout 999999999;
+        }
+
+        # -> pgadmin
+        # See (https://www.pgadmin.org/docs/pgadmin4/6.21/container_deployment.html#http-via-nginx)
+        location /pgadmin/ {
+            # On définit dans une variable pour éviter un crash du proxy en cas d'indispo du service
+            set $upstream pgadmin;
+            
+            # Configuration du routage
+            proxy_set_header X-Script-Name /pgadmin;
+            proxy_set_header Host $host;
+            proxy_pass http://$upstream/;
+            proxy_redirect off;
+        }
+
+        #
+        # -> Portainer
+        location /portainer {
+            return 301 $scheme://$host/portainer/;
+        }
+
+        location ^~ /portainer/ {
+
+            include /etc/nginx/proxy.conf;
+            # include /config/nginx/resolver.conf;
+            set $upstream_app portainer;
+            set $upstream_port 9000;
+            set $upstream_proto http;
+            proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+
+            rewrite /portainer(.*) $1 break;
+            proxy_hide_header X-Frame-Options; # Possibly not needed after Portainer 1.20.0
+        }
+
+        location ^~ /portainer/api {
+            include /etc/nginx/proxy.conf;
+            # include /config/nginx/resolver.conf;
+            set $upstream_app portainer;
+            set $upstream_port 9000;
+            set $upstream_proto http;
+            proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+
+            rewrite /portainer(.*) $1 break;
+            proxy_hide_header X-Frame-Options; # Possibly not needed after Portainer 1.20.0
+        }
+        ##  
+        
+    }
+```
+
+Discussion avec l'enseignant pour l'explication de ces directives. 
+
+#### Lancement et vérifications
+
+Lorsque vous etes prets à tester votre configuration, exécutez la commande suivante afin de lancer le proxy : 
+
+```bash
+docker compose up -d
+```
+
+Que fais cette commande ? 
+Que se passe-t-il ? 
+Où est le service de proxy ? 
+
+Lancez maintenant de manière explicite le "mode proxy", grace au profil associé : 
+
+```bash
+docker compose --profile proxyfied up -d
+```
+
+Debug en groupe, service par service. 
+Les stagiaires les moins moteurs pourront passer directement à la création de basemap. 
 
 ## Conclusion
 

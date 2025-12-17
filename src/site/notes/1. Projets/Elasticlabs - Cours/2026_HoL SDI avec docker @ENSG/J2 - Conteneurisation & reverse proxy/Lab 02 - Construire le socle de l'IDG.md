@@ -125,7 +125,7 @@ Accédez à l'interface de Portainer : `http://172.24.0.22:9000`
       - DOZZLE_LEVEL=info
     networks:
       ensg_sdi:
-        ipv4_address: 172.28.0.30
+        ipv4_address: 172.24.0.30
 ```
 
 Relancer : 
@@ -136,7 +136,7 @@ docker compose up -d
 
 Accès :
 
-- http://localhost:8081
+- http://localhost:8080
 
 👉 Observer les logs de Portainer.
 
@@ -157,11 +157,10 @@ Pourquoi Filebrowser ?
     restart: unless-stopped
     volumes:
       - ./data:/srv
-      - ./data/filebrowser/filebrowser.db:/database/filebrowser.db
     command: ["--noauth"]
     networks:
       ensg_sdi:
-        ipv4_address: 172.28.0.40
+        ipv4_address: 172.24.0.40
 ```
 
 Accès :
@@ -378,6 +377,7 @@ Accédez à `http://172.24.0.11:8080/geoserver` et connectez-vous avec :
     - **Host** : `postgis`
     - **Port** : `5432`
 4. Cliquez sur `Save`
+
 
 ## 8. Ajout et configuration du reverse proxy NGinx
 

@@ -95,7 +95,7 @@ networks:
 Lancez Portainer avec :
 
 ```bash
-docker-compose up -d portainer
+docker compose up -d portainer
 ```
 
 Accédez à l'interface de Portainer : `http://172.24.0.22:9000`
@@ -138,7 +138,7 @@ Accès :
 
 - http://172.24.0.30:8080
 
-👉 Observer les logs de Portainer.
+👉 Observer les logs de Portainer, directement dans l'application Dozzle.
 
 
 ## 3. Ajouter Filebrowser (données & volumes)
@@ -153,19 +153,20 @@ Pourquoi Filebrowser ?
 
 ```bash
 filebrowser:
-  image: hurlenko/filebrowser
+  image: filebrowser/filebrowser
   container_name: ${COMPOSE_PROJECT_NAME}_filebrowser
   restart: unless-stopped
   environment:
     - PUID=$(id -u)
     - PGID=$(id -g)
-    - FB_BASEURL=/data
-# The list of avalable options can be found here : https://filebrowser.org/cli/filebrowser#options.
+    # - FB_BASEURL=/data
+    # The list of avalable options can be found here : https://filebrowser.org/cli/filebrowser#options.
   expose:
-    - "443"
+    - "8080"
   volumes:
-    - ./data/filebrowser/filebrowser.db:/database/filebrowser.db
-    - ./data/filebrowser/config:/config/
+	- filebrowser_data:/srv
+	- filebrowser_database:/database
+	- filebrowser_config:/config
   networks:
     ensg_sdi:
       ipv4_address: 172.24.0.40
@@ -173,7 +174,7 @@ filebrowser:
 
 Accès :
 
-- http://72.24.0.40:8080/data
+- http://72.24.0.40
 
 Lors du 1er lancement, observez les logs du conteneur afin de récupérer l'utilisateur par défaut (`admin`), et son mot de passe généré automatiquement une seule fois à la 1ère connexion. 
 
@@ -181,7 +182,7 @@ Lors du 1er lancement, observez les logs du conteneur afin de récupérer l'util
 docker compose logs filebrowser
 ```
 
-👉 Explorer le dossier `data/`
+👉 Explorer le dossiers disponibles. 
 
 Par la suite, afin de permettre la gestion des données de vos COTS (e.g. geoserver, etc.) via une interface graphique, il sera nécessaire d'associer les volumes dédiés tels que déclarés dans par exemple `geoserver`, dans la liste des volumes de `filebrowser` également. 
 
@@ -192,13 +193,14 @@ Nous allons maintenant ajouter un service PostgreSQL avec l'extension PostGIS.
 ### Ajout du service PostgreSQL/PostGIS
 
 Ajoutez le service `postgis` dans `docker-compose.yml` :
+- La configuration suivante crée la base `ensgdb`, l'utilisateur d'administration `ensgadmin`, ayant pour mot de passe `ensgpassword`
 
 > [!NOTE]- Solution partielle
 
 ```yaml
   postgis:
     image: postgis/postgis:16-3.4
-    container_name: postgis
+    container_name: ${COMPOSE_PROJECT_NAME}_postgis
     restart: always
     expose:
       - "5432"
@@ -221,11 +223,7 @@ Lancez le service :
 docker-compose up -d postgis
 ```
 
-Vérifiez qu'il fonctionne :
-
-```bash
-docker ps
-```
+Vérifiez qu'il fonctionne depuis `portainer` ou `dozzle`, ou encore `docker ps`
 
 Testez la connexion :
 
@@ -233,24 +231,9 @@ Testez la connexion :
 docker compose exec -it postgis psql -U ensgadmin -d ensgdb
 ```
 
-### Test de connexion depuis VS Code
-
-1. Installez l'extension **PostgreSQL** dans VS Code.
-2. Ouvrez le panneau `PostgreSQL Explorer`.
-3. Cliquez sur `Add Connection` et renseignez :
-    - **Host** : `172.24.0.10`
-    - **Port** : `5432`
-    - **User** : `ensgadmin`
-    - **Password** : `ensgpassword`
-    - **Database** : `ensgdb`
-4. Testez la connexion.
-
----
-
 ## 6. Ajouter et configurer pgAdmin 4
 
 pgAdmin est une interface web pour gérer PostgreSQL.
-
 ### Ajout du service pgAdmin
 
 Ajoutez le service `pgAdmin` dans `docker-compose.yml` :
@@ -259,21 +242,18 @@ Ajoutez le service `pgAdmin` dans `docker-compose.yml` :
 
 ```yaml
   pgadmin:
-    image: dpage/pgadmin4
-    container_name: pgadmin
+    image: dpage/pgadmin4:latest
+    container_name: ${COMPOSE_PROJECT_NAME}_pgadmin
     restart: always
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@ensg.eu
       PGADMIN_DEFAULT_PASSWORD: ensgpassword
-      # Hosting sous sous-répertoire (/pgadmin)
-      #- SCRIPT_NAME=/pgadmin
+      SCRIPT_NAME=/pgadmin
     volumes:
       - pgadmin_data:/var/lib/pgadmin
-    expose:
-      - "5050"
     networks:
       ensg_sdi:
-        ipv4_address: 172.24.0.20
+        ipv4_address: 172.24.0.50
 ```
 
 ### Déploiement
@@ -282,12 +262,12 @@ Ajoutez le service `pgAdmin` dans `docker-compose.yml` :
 docker-compose up -d pgadmin
 ```
 
-Accédez à `http://172.24.0.20` et connectez-vous avec :
+Accédez à `http://172.24.0.50`/pgadmin et connectez-vous avec :
 
 - **Email** : `admin@ensg.eu`
 - **Mot de passe** : `ensgpassword`
 
-### Installation des extensions PostgreGIS
+### Installation des extensions PostGIS
 
 Dans l'interface pgAdmin, commencez par enregistrer le serveur `postgis`. Exécutez ensuite  les commandes suivantes. Comment expliquez-vous les résultats remontés ?
 
@@ -315,7 +295,7 @@ Ajouter un `healthcheck` au service `postgis`
 
 ### Ajout du service GeoServer
 
-Ajoutez le bloc suivant dans `docker-compose.yml` :
+Ajoutez le bloc suivant dans `docker-compose.yml` . Les informations entre `${...}` représentent des **variables d'environnement**, attendues par `docker compose` dans un fichier `.env` co-localisé (voir juste après le bloc de service)
 
 ```yaml
   geoserver:
@@ -392,16 +372,16 @@ MAXIMUM_MEMORY=4G
 # Data and extensions
 SAMPLE_DATA=false
 # Full compatibility list : https://github.com/kartoza/docker-geoserver/blob/master/build_data/ Look for *_plugins.txt
-STABLE_EXTENSIONS=css-plugin,imagemap-plugin,importer-plugin,wmts-multi-dimensional-plugin,ysld-plugin
+STABLE_EXTENSIONS=css-plugin,imagemap-plugin,importer-plugin,wmts-multi-dimensional-plugin,ysld-plugin,h2-plugin
 COMMUNITY_EXTENSIONS=backup-restore-plugin,geopkg-plugin,notification-plugin,ogcapi-plugin,smart-data-loader-plugin,wmts-styles-plugin
 ```
 
-Attention, plusieurs choses sont modifiées ici! Saurez-vous deviner lesquelles ? 
+Sauvegardez le fichier, et...
 
 ### Déploiement
 
 ```bash
-docker-compose up -d geoserver
+docker compose up -d geoserver
 ```
 
 Accédez à `http://172.24.0.11:8080/geoserver` et connectez-vous avec :
@@ -411,7 +391,9 @@ Accédez à `http://172.24.0.11:8080/geoserver` et connectez-vous avec :
 
 ### Connexion à PostgreSQL
 
-1. Dans GeoServer, allez dans `Stores > Add new Store`
+1. Dans GeoServer, créez dans cet ordre : 
+	1. un nouvel `espace de travail (workspace)` 
+	2. un nouvel `entrepôt (Store) `
 2. Choisissez `PostGIS`
 3. Remplissez les champs :
     - **Database** : `ensgdb`
@@ -420,6 +402,12 @@ Accédez à `http://172.24.0.11:8080/geoserver` et connectez-vous avec :
     - **Host** : `postgis`
     - **Port** : `5432`
 4. Cliquez sur `Save`
+
+Votre entrepôt configuré, vous ne pouvez pas encore ajouter de couches. 
+Pourquoi ? 
+
+> [!tip]- Réponse
+> La base PostGIS ne contient pas encore de données; il est donc cohérent de ne pas en retrouver ici, non plus!
 
 ### Ajouter un client carto efficace : `mapstore2`
 
@@ -438,7 +426,30 @@ Ajoutez simplement le service suivant dans votre `docker-compose.yml`
         ipv4_address: 172.24.10.5
 ```
 
-## 8. Ajout et configuration du reverse proxy NGinx
+## 8. Synthèse des outils disponibles à cette étape 
+
+Bravo! Vous avez déployé un grand nombre de services, inventoriés très simplement dans un fichier `docker-compose.yml`, et pouvez désormais les lier entre eux pour animer une **Infrastructure de Données Géospatiales (IDG)** simple. 
+
+**Outils d'administration** : 
+- **Portainer**: http://172.24.0.22:9000 , votre outil d'administration des conteneurs.
+- **Dozzle**: http://172.24.0.30:8080/ , votre outil centralisé de gestion des journaux des conteneurs
+- **PostGIS via PGAdmin** : http://http://172.24.0.50/pgadmin/ (admin@ensg.eu/ensgpassword)
+- **Filebrowser**: http://172.24.0.40/files/ (admin/mdp généré au lancement), votre outil Web de gestion des fichiers contenus par les volumes de votre IDG (e.g. geoserver)
+
+**Serveurs et clients cartographiques** : 
+- **Geoserver**: http://172.24.10.3:8080/geoserver/ (admin/geoserver), serveur cartographique de référence, simple et très intuitif
+- **MapStore2**: http://172.24.10.5:8080/mapstore/#/ (admin/admin) , son alter-ego client naturel.
+
+## (Bonus). Ajout et configuration du reverse proxy NGinx
+
+Bien que vous n'en ayez pas strictement besoin pour un fonctionnement de bout en bout de votre infrastructure, la notion de reverse proxy est absolument essentielle dans un infrastructure informatique. 
+
+Interlocuteur unique entre vos clients et votre IDG, le reverse proxy a notamment pour avantage : 
+- de masquer les adresses IP et numéros de ports de vos services
+- de masquer une grande partie desdits services (notamment ceux d'administration)
+- (non implémenté dans ce lab) de centraliser la gestion des authentification
+- (non implémenté dans ce lab) de centraliser la gestion des certificats pour le https
+- (non implémenté dans ce lab) de s'occuper de la gestion de charge serveurs
 
 ### URL (via `/etc/hosts`)
 Dans ce lab, on configure :

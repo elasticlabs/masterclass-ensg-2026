@@ -3,9 +3,6 @@
 ---
 
 # TUTO — Construire une basemap (OSM + fonds standards)
-**Formation : SDI conteneurisée & pensée système**
-
----
 
 ## 🎯 Objectifs
 
@@ -18,8 +15,6 @@
   - un style **praticabilité vélo**
 - publier la basemap via **GeoServer (WMS/WMTS)**
 
----
-
 ## 🧠 Rappel conceptuel
 
 Une **basemap n’est pas neutre** :
@@ -31,8 +26,6 @@ Une **basemap n’est pas neutre** :
 - le routage
 - la lecture de l’exposome
 - la mobilité douce
-
----
 
 # 🧱 Étape 1 — Fonds standards (Natural Earth)
 

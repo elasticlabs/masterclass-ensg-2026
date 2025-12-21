@@ -123,6 +123,7 @@ Accédez à l'interface de Portainer : `http://172.24.0.22:9000`
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - DOZZLE_LEVEL=info
+      - DOZZLE_BASE=/logs
     networks:
       ensg_sdi:
         ipv4_address: 172.24.0.30
@@ -136,7 +137,7 @@ docker compose up -d
 
 Accès :
 
-- http://172.24.0.30:8080
+- http://172.24.0.30:8080/logs
 
 👉 Observer les logs de Portainer, directement dans l'application Dozzle.
 
@@ -159,7 +160,7 @@ filebrowser:
   environment:
     - PUID=$(id -u)
     - PGID=$(id -g)
-    # - FB_BASEURL=/data
+    - FB_BASEURL=/data
     # The list of avalable options can be found here : https://filebrowser.org/cli/filebrowser#options.
   expose:
     - "8080"
@@ -174,7 +175,7 @@ filebrowser:
 
 Accès :
 
-- http://72.24.0.40
+- http://72.24.0.40/data
 
 Lors du 1er lancement, observez les logs du conteneur afin de récupérer l'utilisateur par défaut (`admin`), et son mot de passe généré automatiquement une seule fois à la 1ère connexion. 
 
@@ -376,13 +377,45 @@ STABLE_EXTENSIONS=css-plugin,imagemap-plugin,importer-plugin,wmts-multi-dimensio
 COMMUNITY_EXTENSIONS=backup-restore-plugin,geopkg-plugin,notification-plugin,ogcapi-plugin,smart-data-loader-plugin,wmts-styles-plugin
 ```
 
-Sauvegardez le fichier, et...
+Sauvegardez le fichier.
+
+Ajoutez les volumes `data` de `geoserver` parmi les volumes connus de `filebrowser`, afin d'en permettre l'exploration via cet outil. 
+
+```yaml
+filebrowser:
+  image: filebrowser/filebrowser
+  container_name: ${COMPOSE_PROJECT_NAME}_filebrowser
+  restart: unless-stopped
+  environment:
+    - PUID=$(id -u)
+    - PGID=$(id -g)
+    # - FB_BASE_URL=/data
+    # The list of avalable options can be found here : https://filebrowser.org/cli/filebrowser#options.
+  expose:
+    - "8080"
+  volumes:
+    - filebrowser_data:/srv
+    - filebrowser_database:/database
+    - filebrowser_config:/config
+    - geoserver-data:/srv/geoserver-data
+    - geoserver-injected-data:/srv/geoserver-injected
+    - geoserver-settings:/srv/geoserver-settings
+  networks:
+    ensg_sdi:
+      ipv4_address: 172.24.0.40
+```
 
 ### Déploiement
 
 ```bash
-docker compose up -d geoserver
+docker compose up -d
 ```
+
+Seuls les services `geoserver` et `filebrowser` sont redémarrés; pourquoi ? 
+
+> [!tip]- Réponse
+> docker compose fait l'inventaire des modifications de configuration, et de recrée ou redémarre que les seules ressources nécessaires !
+
 
 Accédez à `http://172.24.0.11:8080/geoserver` et connectez-vous avec :
 
@@ -434,7 +467,7 @@ Bravo! Vous avez déployé un grand nombre de services, inventoriés très simpl
 - **Portainer**: http://172.24.0.22:9000 , votre outil d'administration des conteneurs.
 - **Dozzle**: http://172.24.0.30:8080/ , votre outil centralisé de gestion des journaux des conteneurs
 - **PostGIS via PGAdmin** : http://http://172.24.0.50/pgadmin/ (admin@ensg.eu/ensgpassword)
-- **Filebrowser**: http://172.24.0.40/files/ (admin/mdp généré au lancement), votre outil Web de gestion des fichiers contenus par les volumes de votre IDG (e.g. geoserver)
+- **Filebrowser**: http://172.24.0.40/data (admin/mdp généré au lancement), votre outil Web de gestion des fichiers contenus par les volumes de votre IDG (e.g. geoserver)
 
 **Serveurs et clients cartographiques** : 
 - **Geoserver**: http://172.24.10.3:8080/geoserver/ (admin/geoserver), serveur cartographique de référence, simple et très intuitif
@@ -452,28 +485,29 @@ Interlocuteur unique entre vos clients et votre IDG, le reverse proxy a notammen
 - (non implémenté dans ce lab) de s'occuper de la gestion de charge serveurs
 
 ### URL (via `/etc/hosts`)
-Dans ce lab, on configure :
+Dans ce lab, on configure la ligne suivante dans le fichier `/etc/hosts` :
 
 ```bash
 127.0.0.1  ensg-sdi.docker
 ```
 
-On chercher à mettre en oeuvre les accès suivants :
 
--  http://ensg-sdi.docker/ ✅ Mapstore2
-- `http://ensg-sdi.docker/geoserver` ✅ (GeoServer est nativement sous `/geoserver`) [Documentation GeoServer](https://docs.geoserver.org/main/en/user/installation/docker.html?utm_source=chatgpt.com)
-- `http://ensg-sdi.docker/files` ✅ (Filebrowser avec baseurl) [GitHub+1](https://github.com/filebrowser/filebrowser/issues/1557?utm_source=chatgpt.com)
-- `http://ensg-sdi.docker/logs` ✅ (Dozzle avec `DOZZLE_BASE`) [Dozzle+1](https://dozzle.dev/guide/changing-base?utm_source=chatgpt.com)
-- `http://ensg-sdi.docker/pgadmin` ✅ (pgAdmin sous sous-répertoire via `SCRIPT_NAME`)
-
-La démarche peut se révéler très laborieuse pour certains logiciels qui n'ont pas été spécifiquement conçus pour se placer derrière un proxy. Il est parfois illusoire d'espérer configurer un service sous forme de `sous-dossier`. 
-
-Le principe : 
+**reverse proxy - le principe** : 
 - Inventaire des URL désirées ✅
 - Vérification des possibilités des COTS ✅
 - Création du services de proxy
 - Configuration des règles d'aiguillage
 - Configuration des COTS concernés
+
+On chercher à mettre en oeuvre les accès suivants :
+
+-  http://ensg-sdi.docker/ : Mapstore2
+- `http://ensg-sdi.docker/geoserver` : (GeoServer est nativement sous `/geoserver`) [Documentation GeoServer](https://docs.geoserver.org/main/en/user/installation/docker.html?utm_source=chatgpt.com)
+- `http://ensg-sdi.docker/files` : (Filebrowser avec baseurl) [GitHub+1](https://github.com/filebrowser/filebrowser/issues/1557?utm_source=chatgpt.com)
+- `http://ensg-sdi.docker/logs` : (Dozzle avec `DOZZLE_BASE`) [Dozzle+1](https://dozzle.dev/guide/changing-base?utm_source=chatgpt.com)
+- `http://ensg-sdi.docker/pgadmin` : (pgAdmin sous sous-répertoire via `SCRIPT_NAME`)
+
+La démarche peut se révéler très laborieuse pour certains logiciels qui n'ont pas été spécifiquement conçus pour se placer derrière un proxy. Il est parfois illusoire d'espérer configurer un service sous forme de `sous-dossier`. 
 
 ### Ajout du service nginx-proxy
 
@@ -492,12 +526,13 @@ Ajoutez le bloc suivant dans votre `docker-compose.yml`
       - pgadmin
       - portainer
       - filebrowser
+      - geoserver
     build:
       context: ./config/nginx-proxy
     environment:
       - DHPARAM_GENERATION=false
       - VIRTUAL_PORT=80
-      - VIRTUAL_HOST=hub.ensg-sdi.docker
+      - VIRTUAL_HOST=ensg-sdi.docker
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
     profiles:
@@ -516,50 +551,20 @@ Créez ce répertoire, et éditez le fichier `./config/Dockerfile`
 ```Dockerfile
 FROM nginx:alpine
 
-COPY proxy.conf /etc/nginx/proxy.conf
 COPY ensg-sdi.docker.conf /etc/nginx/conf.d/ensg-sdi.docker.conf
 ```
 
 Discuter avec l'enseignant sur la signification de ces directives. 
 
-Le fichier `proxy.conf` contiendra les paramètres généraux du proxy. Créer le fichier avec les valeurs par défaut suivantes : 
-
-```proxy.conf
-## Headers
-proxy_set_header Host $host;
-proxy_set_header X-Original-URL $scheme://$http_host$request_uri;
-proxy_set_header X-Forwarded-Proto $scheme;
-proxy_set_header X-Forwarded-Host $http_host;
-proxy_set_header X-Forwarded-Uri $request_uri;
-proxy_set_header X-Forwarded-Ssl on;
-proxy_set_header X-Forwarded-For $remote_addr;
-proxy_set_header X-Real-IP $remote_addr;
-proxy_set_header Connection "";
-
-## Basic Proxy Configuration
-client_body_buffer_size 128k;
-proxy_next_upstream error timeout invalid_header http_500 http_502 http_503; ## Timeout if the real server is dead.
-proxy_redirect  http://  $scheme://;
-proxy_http_version 1.1;
-proxy_cache_bypass $cookie_session;
-proxy_no_cache $cookie_session;
-proxy_buffers 64 256k;
-
-## Advanced Proxy Configuration
-send_timeout 5m;
-proxy_read_timeout 360;
-proxy_send_timeout 360;
-proxy_connect_timeout 360;
-```
-
 #### Aiguillage de notre IDG
 
-Le fichier `ensg-sdi.docker.conf` nous intéresse plus, et va contenir les règles d'aiguillage des outils implémentés so far. 
+Le fichier `ensg-sdi.docker.conf` nous intéresse beaucoup ici, et va contenir les règles d'aiguillage des outils implémentés so far. 
 
-```conf
+```nginx
+
 log_format sdi-vhost '$host $remote_addr - $remote_user [$time_local] '
-                 '"$request" $status $body_bytes_sent '
-                 '"$http_referer" "$http_user_agent"';
+'"$request" $status $body_bytes_sent '
+'"$http_referer" "$http_user_agent"';
 
 ##
 #client_max_body_size 4G;
@@ -567,125 +572,122 @@ log_format sdi-vhost '$host $remote_addr - $remote_user [$time_local] '
 
 #
 # Set resolver to docker default DNS
-# resolver 127.0.0.11 valid=30s;
+resolver 127.0.0.11 valid=30s;
 
 # server blocks definition
 server {
-        #
-        # Doit refléter le nom de domaine couvert par ce block server
-        server_name ensg-sdi.docker;
+	#
+	# Doit refl..ter le nom de domaine couvert par ce block server
+	server_name ensg-sdi.docker;
+	listen 80 ;
+	access_log /var/log/nginx/access.log sdi-vhost;
+	
+	# (optionnel mais pratique) limite upload
+	client_max_body_size 4G;
+	large_client_header_buffers 4 32k;
+	
+	# Headers communs
+	proxy_set_header Host $host;
+	proxy_set_header X-Real-IP $remote_addr;
+	proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+	proxy_set_header X-Forwarded-Proto $scheme;
+	  
+	#
+	# ->
+	location / {
+		set $upstream homepage;
+		proxy_pass http://$upstream:3000;
+		proxy_http_version 1.1;
+	}
+	# -> Geoserver
+	# See (https://github.com/kartoza/docker-geoserver)
+	location /geoserver/ {
+		# On d..finit dans une variable pour ..viter un crash du proxy en cas d'indispo du service
+		set $upstream geoserver;
+		#
+		proxy_pass http://$upstream:8080;
+		proxy_redirect off;
+		proxy_set_header X-Forwarded-Prefix /geoserver;
+		proxy_http_version 1.1;
+	}
+	
+	## -> Mapstore2
+	# See Tomcat behind reverse proxy -> https://clouding.io/hc/en-us/articles/360010691359-How-to-Install-Tomcat-with-Nginx-as-a
+	location /mapstore/ {
+		# On d..finit dans une variable pour ..viter un crash du proxy en cas d'indispo du service
+		set $upstream mapstore2;
+		#
+		proxy_pass http://$upstream:8080;
+		proxy_set_header X-Forwarded-Prefix /mapstore;
+		proxy_set_header X-Forwarded-Host $host;
+		proxy_set_header X-Forwarded-Server $host;
+	}
+	
+	#
+	# -> Filebrowser : files admin web GUI for our stack
+	location /data {
+		# On d..finit dans une variable pour ..viter un crash du proxy en cas d'indispo du service
+		set $upstream filebrowser;
+		# prevents 502 bad gateway error
+		proxy_buffers 8 32k;
+		proxy_buffer_size 64k;
+		client_max_body_size 75M;
+		# redirect all HTTP traffic to localhost:8088;
+		proxy_pass http://$upstream;
+		proxy_set_header X-Forwarded-Prefix /data;
+		# enables WS support
+		proxy_http_version 1.1;
+	}
+	
+	location /logs/ {
+		set $upstream dozzle;
+		proxy_set_header X-Forwarded-Prefix /logs;
+		proxy_pass http://$upstream:8080;
+		proxy_redirect off;
+		proxy_http_version 1.1;
+		proxy_set_header Upgrade $http_upgrade;
+	}
+	
+	# -> pgadmin
+	# See (https://www.pgadmin.org/docs/pgadmin4/6.21/container_deployment.html#http-via-nginx)
+	location /pgadmin/ {
+		# On d..finit dans une variable pour ..viter un crash du proxy en cas d'indispo du service
+		set $upstream pgadmin;
+		
+		# Configuration du routage
+		proxy_set_header X-Script-Name /pgadmin;
+		proxy_set_header Host $host;
+		proxy_pass http://$upstream;
+		proxy_redirect off;
+	}
+	
+	# -> Portainer
+	location /portainer {
+		return 301 $scheme://$host/portainer/;
+	}
+	
+	location ^~ /portainer/ {
+		# include /config/nginx/resolver.conf;
+		set $upstream_app portainer;
+		set $upstream_port 9000;
+		set $upstream_proto http;
+		proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+		rewrite /portainer(.*) $1 break;
+		proxy_hide_header X-Frame-Options; # Possibly not needed after Portainer 1.20.0
+	}
+	
+	location ^~ /portainer/api {
+		# include /config/nginx/resolver.conf;
+		set $upstream_app portainer;
+		set $upstream_port 9000;
+		set $upstream_proto http;
+		proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+		rewrite /portainer(.*) $1 break;
+		proxy_hide_header X-Frame-Options; # Possibly not needed after Portainer 1.20.0
+	}
+	##
+}
 
-        listen 80 ;
-        access_log /var/log/nginx/access.log sdi-vhost;
-        
-        #
-        # -> 
-        location / {
-            include /etc/nginx/proxy.conf;
-
-        }
-
-        # -> Geoserver
-        # See (https://github.com/kartoza/docker-geoserver)
-        location /geoserver {
-            # On définit dans une variable pour éviter un crash du proxy en cas d'indispo du service
-            set $upstream geoserver:8080;
-            
-            #
-            proxy_pass http://$upstream/geoserver;
-            proxy_set_header    Host            $host;
-            proxy_set_header    X-Real-IP       $remote_addr;
-            proxy_set_header    X-Forwarded-for $remote_addr;
-            port_in_redirect off;
-            proxy_connect_timeout 600;
-            proxy_set_header X-Script-Name /geoserver;
-        }
-
-        # -> Mapstore2 
-        # See Tomcat behind reverse proxy -> https://clouding.io/hc/en-us/articles/360010691359-How-to-Install-Tomcat-with-Nginx-as-a-Reverse-Proxy-on-Ubuntu-18-04
-        location /mapstore {
-            # On définit dans une variable pour éviter un crash du proxy en cas d'indispo du service
-            set $upstream mapstore2:8080;
-
-            #
-            proxy_pass http://$upstream/mapstore;
-            proxy_set_header X-Forwarded-Host $host;
-            proxy_set_header X-Forwarded-Server $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header Host $host;
-        }
-        
-        #
-        # -> Filebrowser : files admin web GUI for our stack
-        location /data {
-            # On définit dans une variable pour éviter un crash du proxy en cas d'indispo du service
-            set $upstream filebrowser:8080;
-            
-            # prevents 502 bad gateway error
-            proxy_buffers 8 32k;
-            proxy_buffer_size 64k;
-            client_max_body_size 75M;
-
-            # redirect all HTTP traffic to localhost:8088;
-            proxy_pass http://$upstream;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header Host $http_host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            #proxy_set_header X-NginX-Proxy true;
-
-            # enables WS support
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-            proxy_read_timeout 999999999;
-        }
-
-        # -> pgadmin
-        # See (https://www.pgadmin.org/docs/pgadmin4/6.21/container_deployment.html#http-via-nginx)
-        location /pgadmin/ {
-            # On définit dans une variable pour éviter un crash du proxy en cas d'indispo du service
-            set $upstream pgadmin;
-            
-            # Configuration du routage
-            proxy_set_header X-Script-Name /pgadmin;
-            proxy_set_header Host $host;
-            proxy_pass http://$upstream/;
-            proxy_redirect off;
-        }
-
-        #
-        # -> Portainer
-        location /portainer {
-            return 301 $scheme://$host/portainer/;
-        }
-
-        location ^~ /portainer/ {
-
-            include /etc/nginx/proxy.conf;
-            # include /config/nginx/resolver.conf;
-            set $upstream_app portainer;
-            set $upstream_port 9000;
-            set $upstream_proto http;
-            proxy_pass $upstream_proto://$upstream_app:$upstream_port;
-
-            rewrite /portainer(.*) $1 break;
-            proxy_hide_header X-Frame-Options; # Possibly not needed after Portainer 1.20.0
-        }
-
-        location ^~ /portainer/api {
-            include /etc/nginx/proxy.conf;
-            # include /config/nginx/resolver.conf;
-            set $upstream_app portainer;
-            set $upstream_port 9000;
-            set $upstream_proto http;
-            proxy_pass $upstream_proto://$upstream_app:$upstream_port;
-
-            rewrite /portainer(.*) $1 break;
-            proxy_hide_header X-Frame-Options; # Possibly not needed after Portainer 1.20.0
-        }
-        ##  
-        
-    }
 ```
 
 Discussion avec l'enseignant pour l'explication de ces directives. 
@@ -710,6 +712,167 @@ docker compose --profile proxyfied up -d
 
 Debug en groupe, service par service. 
 Les stagiaires les moins moteurs pourront passer directement à la création de basemap. 
+
+## (Bonus) Homepage – Portail de la GeoStack
+
+Mettre en place une **page d’accueil unifiée** pour la stack SDI, servant de :
+- point d’entrée unique pour les outils,
+- support pédagogique pour comprendre l’architecture, 
+- interface de navigation simple pour les utilisateurs non techniques.
+
+La solution retenue est **Homepage (gethomepage)**, servie à la racine via le reverse proxy NGINX.
+
+URL cible :  
+👉 `http://ensg-sdi.docker/`
+
+### 🧩 Rôle de Homepage dans l’architecture
+
+Homepage **ne remplace aucun service** :
+- ❌ pas un proxy
+- ❌ pas un orchestrateur
+- ❌ pas un catalogue
+
+👉 C’est un **tableau de bord statique**, qui :
+- documente l’existant,
+- expose les URLs propres,
+- rend visible la structure du système.
+
+### 🐳 Ajout du service docker compose
+
+Le service Homepage est ajouté au `docker-compose.yml` :
+
+```yaml
+# -> Homepage
+homepage:
+  image: gethomepage/homepage:latest
+  container_name: ${COMPOSE_PROJECT_NAME}_homepage
+  restart: unless-stopped
+  expose:
+    - "3000"
+  volumes:
+    - ./config/homepage:/app/config
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+  environment:
+    - HOMEPAGE_ALLOWED_HOSTS=ensg-sdi.docker
+    - PUID=1000
+    - PGID=1000
+  networks:
+    ensg_sdi:
+      ipv4_address: 172.24.10.6
+```
+
+Arborescence associée :
+
+```arduino
+homepage/
+├── config/
+│   ├── settings.yaml
+│   ├── services.yaml
+│   └── widgets.yaml   (optionnel)
+└── icons/             (optionnel)
+```
+
+👉 **Aucun code**, uniquement de la configuration déclarative.
+
+### Fichiers de configuration
+
+`settings.yaml` (minimal et propre)
+
+```yaml
+title: ENSG SDI – GeoStack
+theme: dark
+color: slate
+
+background:
+  image: /icons/bg.jpg   # optionnel
+  blur: sm
+  saturate: 120
+
+layout:
+  Infrastructure:
+    style: row
+    columns: 3
+
+headerStyle: boxed
+hideErrors: true
+
+```
+
+
+`services.yaml` (aligné avec tes URLs proxy)
+
+
+```yaml
+- Infrastructure:
+    - GeoServer:
+        icon: geoserver
+        href: http://ensg-sdi.docker/geoserver
+        description: Services OGC (WMS/WFS/WCS)
+
+    - MapStore:
+        icon: mapstore
+        href: http://ensg-sdi.docker/mapstore
+        description: Applications cartographiques
+
+    - GeoNetwork:
+        icon: geonetwork
+        href: http://ensg-sdi.docker/geonetwork
+        description: Catalogue de métadonnées
+
+- Administration:
+    - pgAdmin:
+        icon: postgres
+        href: http://ensg-sdi.docker/pgadmin
+        description: Administration PostgreSQL
+
+    - Portainer:
+        icon: docker
+        href: http://ensg-sdi.docker/portainer
+        description: Containers & stacks
+
+    - Dozzle:
+        icon: logs
+        href: http://ensg-sdi.docker/logs
+        description: Logs temps réel
+
+    - Filebrowser:
+        icon: folder
+        href: http://ensg-sdi.docker/data
+        description: Données & produits
+
+```
+
+💡 Même si GeoNetwork n’est pas encore branché côté NGINX, tu peux déjà le préparer ici.
+
+
+### `.gitignore` – Homepage (formation)
+
+Objectif :  
+👉 **Versionner uniquement les fichiers YAML créés/modifiés en séance**,  
+et ignorer tout le reste (cache, exemples, assets auto-générés).
+
+```gitignore
+# Ignore tout par défaut dans homepage
+homepage/**
+
+# Autorise uniquement les dossiers utiles
+!homepage/config/
+!homepage/icons/
+
+# Autorise uniquement les fichiers YAML initiés
+!homepage/config/settings.yaml
+!homepage/config/services.yaml
+!homepage/config/widgets.yaml
+
+# Autorise les icônes ajoutées explicitement
+!homepage/icons/**
+
+# Sécurité
+#.env
+*.log
+.DS_Store
+
+```
 
 ## Conclusion
 

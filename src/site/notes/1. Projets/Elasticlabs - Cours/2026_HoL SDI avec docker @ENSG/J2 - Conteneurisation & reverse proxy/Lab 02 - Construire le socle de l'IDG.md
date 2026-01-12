@@ -175,7 +175,7 @@ filebrowser:
 
 Accès :
 
-- http://72.24.0.40/data
+- http://172.24.0.40/data
 
 Lors du 1er lancement, observez les logs du conteneur afin de récupérer l'utilisateur par défaut (`admin`), et son mot de passe généré automatiquement une seule fois à la 1ère connexion. 
 
@@ -565,127 +565,123 @@ Le fichier `ensg-sdi.docker.conf` nous intéresse beaucoup ici, et va contenir l
 log_format sdi-vhost '$host $remote_addr - $remote_user [$time_local] '
 '"$request" $status $body_bytes_sent '
 '"$http_referer" "$http_user_agent"';
-
+  
 ##
 #client_max_body_size 4G;
 #large_client_header_buffers 4 32k;
-
+  
 #
 # Set resolver to docker default DNS
 resolver 127.0.0.11 valid=30s;
-
+  
 # server blocks definition
 server {
-	#
-	# Doit refl..ter le nom de domaine couvert par ce block server
-	server_name ensg-sdi.docker;
-	listen 80 ;
-	access_log /var/log/nginx/access.log sdi-vhost;
-	
-	# (optionnel mais pratique) limite upload
-	client_max_body_size 4G;
-	large_client_header_buffers 4 32k;
-	
-	# Headers communs
-	proxy_set_header Host $host;
-	proxy_set_header X-Real-IP $remote_addr;
-	proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-	proxy_set_header X-Forwarded-Proto $scheme;
-	  
-	#
-	# ->
-	location / {
-		set $upstream homepage;
-		proxy_pass http://$upstream:3000;
-		proxy_http_version 1.1;
-	}
-	# -> Geoserver
-	# See (https://github.com/kartoza/docker-geoserver)
-	location /geoserver/ {
-		# On d..finit dans une variable pour ..viter un crash du proxy en cas d'indispo du service
-		set $upstream geoserver;
-		#
-		proxy_pass http://$upstream:8080;
-		proxy_redirect off;
-		proxy_set_header X-Forwarded-Prefix /geoserver;
-		proxy_http_version 1.1;
-	}
-	
-	## -> Mapstore2
-	# See Tomcat behind reverse proxy -> https://clouding.io/hc/en-us/articles/360010691359-How-to-Install-Tomcat-with-Nginx-as-a
-	location /mapstore/ {
-		# On d..finit dans une variable pour ..viter un crash du proxy en cas d'indispo du service
-		set $upstream mapstore2;
-		#
-		proxy_pass http://$upstream:8080;
-		proxy_set_header X-Forwarded-Prefix /mapstore;
-		proxy_set_header X-Forwarded-Host $host;
-		proxy_set_header X-Forwarded-Server $host;
-	}
-	
-	#
-	# -> Filebrowser : files admin web GUI for our stack
-	location /data {
-		# On d..finit dans une variable pour ..viter un crash du proxy en cas d'indispo du service
-		set $upstream filebrowser;
-		# prevents 502 bad gateway error
-		proxy_buffers 8 32k;
-		proxy_buffer_size 64k;
-		client_max_body_size 75M;
-		# redirect all HTTP traffic to localhost:8088;
-		proxy_pass http://$upstream;
-		proxy_set_header X-Forwarded-Prefix /data;
-		# enables WS support
-		proxy_http_version 1.1;
-	}
-	
-	location /logs/ {
-		set $upstream dozzle;
-		proxy_set_header X-Forwarded-Prefix /logs;
-		proxy_pass http://$upstream:8080;
-		proxy_redirect off;
-		proxy_http_version 1.1;
-		proxy_set_header Upgrade $http_upgrade;
-	}
-	
-	# -> pgadmin
-	# See (https://www.pgadmin.org/docs/pgadmin4/6.21/container_deployment.html#http-via-nginx)
-	location /pgadmin/ {
-		# On d..finit dans une variable pour ..viter un crash du proxy en cas d'indispo du service
-		set $upstream pgadmin;
-		
-		# Configuration du routage
-		proxy_set_header X-Script-Name /pgadmin;
-		proxy_set_header Host $host;
-		proxy_pass http://$upstream;
-		proxy_redirect off;
-	}
-	
-	# -> Portainer
-	location /portainer {
-		return 301 $scheme://$host/portainer/;
-	}
-	
-	location ^~ /portainer/ {
-		# include /config/nginx/resolver.conf;
-		set $upstream_app portainer;
-		set $upstream_port 9000;
-		set $upstream_proto http;
-		proxy_pass $upstream_proto://$upstream_app:$upstream_port;
-		rewrite /portainer(.*) $1 break;
-		proxy_hide_header X-Frame-Options; # Possibly not needed after Portainer 1.20.0
-	}
-	
-	location ^~ /portainer/api {
-		# include /config/nginx/resolver.conf;
-		set $upstream_app portainer;
-		set $upstream_port 9000;
-		set $upstream_proto http;
-		proxy_pass $upstream_proto://$upstream_app:$upstream_port;
-		rewrite /portainer(.*) $1 break;
-		proxy_hide_header X-Frame-Options; # Possibly not needed after Portainer 1.20.0
-	}
-	##
+#
+# Doit refl..ter le nom de domaine couvert par ce block server
+server_name ensg-sdi.docker;
+listen 80 ;
+access_log /var/log/nginx/access.log sdi-vhost;
+# (optionnel mais pratique) limite upload
+client_max_body_size 4G;
+large_client_header_buffers 4 32k;
+# Headers communs
+proxy_set_header Host $host;
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+  
+#
+# ->
+location / {
+set $upstream homepage;
+proxy_pass http://$upstream:3000;
+proxy_http_version 1.1;
+}
+# -> Geoserver
+# See (https://github.com/kartoza/docker-geoserver)
+location /geoserver/ {
+# On d..finit dans une variable pour ..viter un crash du proxy en cas d'indispo du service
+set $upstream geoserver;
+#
+proxy_pass http://$upstream:8080;
+proxy_redirect off;
+proxy_set_header X-Forwarded-Prefix /geoserver;
+proxy_http_version 1.1;
+}
+  
+ 
+## -> Mapstore2
+# See Tomcat behind reverse proxy -> https://clouding.io/hc/en-us/articles/360010691359-How-to-Install-Tomcat-with-Nginx-as-a
+location /mapstore/ {
+# On d..finit dans une variable pour ..viter un crash du proxy en cas d'indispo du service
+set $upstream mapstore2;
+#
+proxy_pass http://$upstream:8080;
+proxy_set_header X-Forwarded-Prefix /mapstore;
+proxy_set_header X-Forwarded-Host $host;
+proxy_set_header X-Forwarded-Server $host;
+}
+#
+# -> Filebrowser : files admin web GUI for our stack
+location /data {
+# On d..finit dans une variable pour ..viter un crash du proxy en cas d'indispo du service
+set $upstream filebrowser;
+# prevents 502 bad gateway error
+proxy_buffers 8 32k;
+proxy_buffer_size 64k;
+client_max_body_size 75M;
+# redirect all HTTP traffic to localhost:8088;
+proxy_pass http://$upstream;
+proxy_set_header X-Forwarded-Prefix /data;
+# enables WS support
+proxy_http_version 1.1;
+}
+  
+location /logs/ {
+set $upstream dozzle;
+proxy_set_header X-Forwarded-Prefix /logs;
+proxy_pass http://$upstream:8080;
+proxy_redirect off;
+proxy_http_version 1.1;
+proxy_set_header Upgrade $http_upgrade;
+}
+
+# -> pgadmin
+# See (https://www.pgadmin.org/docs/pgadmin4/6.21/container_deployment.html#http-via-nginx)
+location /pgadmin/ {
+# On d..finit dans une variable pour ..viter un crash du proxy en cas d'indispo du service
+set $upstream pgadmin;
+# Configuration du routage
+proxy_set_header X-Script-Name /pgadmin;
+proxy_set_header Host $host;
+proxy_pass http://$upstream;
+proxy_redirect off;
+}
+  
+#
+# -> Portainer
+location /portainer {
+return 301 $scheme://$host/portainer/;
+}
+location ^~ /portainer/ {
+# include /config/nginx/resolver.conf;
+set $upstream_app portainer;
+set $upstream_port 9000;
+set $upstream_proto http;
+proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+rewrite /portainer(.*) $1 break;
+proxy_hide_header X-Frame-Options; # Possibly not needed after Portainer 1.20.0
+}
+location ^~ /portainer/api {
+# include /config/nginx/resolver.conf;
+set $upstream_app portainer;
+set $upstream_port 9000;
+set $upstream_proto http;
+proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+rewrite /portainer(.*) $1 break;
+proxy_hide_header X-Frame-Options; # Possibly not needed after Portainer 1.20.0
+}
+##
 }
 
 ```
@@ -742,6 +738,7 @@ Homepage **ne remplace aucun service** :
 Le service Homepage est ajouté au `docker-compose.yml` :
 
 ```yaml
+
 # -> Homepage
 homepage:
   image: gethomepage/homepage:latest
@@ -758,7 +755,8 @@ homepage:
     - PGID=1000
   networks:
     ensg_sdi:
-      ipv4_address: 172.24.10.6
+    ipv4_address: 172.24.10.6
+
 ```
 
 Arborescence associée :

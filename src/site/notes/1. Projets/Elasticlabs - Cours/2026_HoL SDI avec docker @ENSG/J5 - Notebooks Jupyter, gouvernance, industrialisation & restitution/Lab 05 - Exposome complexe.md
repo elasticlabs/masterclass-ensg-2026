@@ -310,6 +310,13 @@ Et le fichier OSM converti à l'étape précédente sur l’hôte : `./data/inpu
 - La conversion simplifie également le fichier en supprimant une grande quantité d'informations ajoutés dans les fichiers PBF (métadonnées)
 - Le fichier résultant est plus simple, mais contient tout ce dont `pgrouting` a besoin pour travailler!
 
+Commencer par récupérer un fichier de configuration osm2pgrouting prore : 
+
+```bash
+CID=$(docker create iboates/osm2pgrouting)
+docker cp "$CID":/usr/share/osm2pgrouting/mapconfig.xml ./mapconfig.xml
+```
+
 ```bash
 docker run --rm \
   --network ensg_sdi \

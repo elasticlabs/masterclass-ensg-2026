@@ -538,22 +538,26 @@ SELECT * FROM pgr_dijkstra(
 Afin de visualiser directement dans pgrouting l'itinéraire, nous allons créer une vue : 
 
 ```sql
-UPDATE ways w
-SET cost_car =
-  CASE
-    WHEN c.tag_key='highway' AND c.tag_value IN ('footway','path','cycleway','pedestrian') THEN 1e9
-    WHEN c.maxspeed IS NOT NULL THEN w.length_m / (c.maxspeed * 1000.0/3600.0)
-    ELSE w.length_m / 13.8888889
-  END,
-  reverse_cost_car =
-  CASE
-    WHEN c.tag_key='highway' AND c.tag_value IN ('footway','path','cycleway','pedestrian') THEN 1e9
-    WHEN c.maxspeed_backward IS NOT NULL THEN w.length_m / (c.maxspeed_backward * 1000.0/3600.0)
-    WHEN c.maxspeed IS NOT NULL THEN w.length_m / (c.maxspeed * 1000.0/3600.0)
-    ELSE w.length_m / 13.8888889
-  END
-FROM configuration c
-WHERE w.tag_id = c.tag_id;
+CREATE OR REPLACE VIEW v_route_car AS
+WITH r AS (
+  SELECT * FROM pgr_dijkstra(
+    'SELECT id, source, target, cost_car AS cost, reverse_cost_car AS reverse_cost FROM ways',
+    1000, 2000,
+    directed := true
+  )
+),
+segs AS (
+  SELECT w.geom, r.seq, r.cost
+  FROM r
+  JOIN ways w ON w.id = r.edge
+  WHERE r.edge <> -1
+  ORDER BY r.seq
+)
+SELECT
+  1::integer AS id,
+  ST_LineMerge(ST_Union(geom))::geometry(MultiLineString, 4326) AS geom,
+  SUM(cost) AS total_cost
+FROM segs;
 ```
 
 
@@ -576,23 +580,26 @@ SELECT * FROM pgr_dijkstra(
 Afin de visualiser directement dans pgrouting l'itinéraire, nous allons créer une vue : 
 
 ```sql
-UPDATE ways w
-SET cost_bike =
-  CASE
-    WHEN c.tag_key='highway' AND c.tag_value IN ('motorway','motorway_link') THEN 1e9
-    WHEN c.tag_key='highway' AND c.tag_value='cycleway' THEN w.length_m / 5.5555556
-    WHEN c.tag_key='highway' AND c.tag_value IN ('path','track') THEN w.length_m / 3.3333333
-    ELSE w.length_m / 4.1666667
-  END,
-  reverse_cost_bike =
-  CASE
-    WHEN c.tag_key='highway' AND c.tag_value IN ('motorway','motorway_link') THEN 1e9
-    WHEN c.tag_key='highway' AND c.tag_value='cycleway' THEN w.length_m / 5.5555556
-    WHEN c.tag_key='highway' AND c.tag_value IN ('path','track') THEN w.length_m / 3.3333333
-    ELSE w.length_m / 4.1666667
-  END
-FROM configuration c
-WHERE w.tag_id = c.tag_id;
+CREATE OR REPLACE VIEW v_route_bike AS
+WITH r AS (
+  SELECT * FROM pgr_dijkstra(
+    'SELECT id, source, target, cost_bike AS cost, reverse_cost_bike AS reverse_cost FROM ways',
+    1000, 2000,
+    directed := true
+  )
+),
+segs AS (
+  SELECT w.geom, r.seq, r.cost
+  FROM r
+  JOIN ways w ON w.id = r.edge
+  WHERE r.edge <> -1
+  ORDER BY r.seq
+)
+SELECT
+  1::integer AS id,
+  ST_LineMerge(ST_Union(geom))::geometry(MultiLineString, 4326) AS geom,
+  SUM(cost) AS total_cost
+FROM segs;
 
 ```
 
@@ -615,19 +622,26 @@ SELECT * FROM pgr_dijkstra(
 Afin de visualiser directement dans pgrouting l'itinéraire, nous allons créer une vue : 
 
 ```sql
-UPDATE ways w
-SET cost_walk =
-  CASE
-    WHEN c.tag_key='highway' AND c.tag_value IN ('motorway','motorway_link') THEN 1e9
-    ELSE w.length_m / 1.3888889
-  END,
-  reverse_cost_walk =
-  CASE
-    WHEN c.tag_key='highway' AND c.tag_value IN ('motorway','motorway_link') THEN 1e9
-    ELSE w.length_m / 1.3888889
-  END
-FROM configuration c
-WHERE w.tag_id = c.tag_id;
+CREATE OR REPLACE VIEW v_route_walk AS
+WITH r AS (
+  SELECT * FROM pgr_dijkstra(
+    'SELECT id, source, target, cost_walk AS cost, reverse_cost_walk AS reverse_cost FROM ways',
+    1000, 2000,
+    directed := true
+  )
+),
+segs AS (
+  SELECT w.geom, r.seq, r.cost
+  FROM r
+  JOIN ways w ON w.id = r.edge
+  WHERE r.edge <> -1
+  ORDER BY r.seq
+)
+SELECT
+  1::integer AS id,
+  ST_LineMerge(ST_Union(geom))::geometry(MultiLineString, 4326) AS geom,
+  SUM(cost) AS total_cost
+FROM segs;
 ```
 
 Vous pouvez visualiser le tracé directement dans pgAdmin ! Passons maintenant à la construction de nos variables d'exposome. 

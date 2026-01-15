@@ -2,8 +2,24 @@
 {"dg-publish":true,"permalink":"/1-projets/elasticlabs-cours/2026-ho-l-sdi-avec-docker-ensg/j2-conteneurisation-and-reverse-proxy/lab-01-mise-en-route/","tags":["gardenEntry"],"noteIcon":""}
 ---
 
-
 Bienvenue dans cette série de cours sur la conception d'Infrastructures de Données Géospatiales sous forme de micro services. 
+
+## Remerciements
+
+Merci beaucoup d'avoir participé à cette formation! J'espère que vous avez appris un maximum de choses ! 
+
+**Parmi les points d'amélioration**, je note : 
+1. Mettre la géomatique au centre du cours / des labs
+2. Démarche DATA progressive, docker comme *technical enabler*, moins en avant
+3. Conserver architecture + processus data implémenté comme fil rouge, durant tout le cours. 
+
+Le cours de l'an prochain sera donc également sur le thème de l'exposome et ses impacts sur un *sujet lifestyle*, mais + centré sur celui-ci. 
+
+A bientot ! 😃
+
+Patrice
+
+---
 
 ## Architecture finale visée 
 

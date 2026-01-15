@@ -317,6 +317,8 @@ CID=$(docker create iboates/osm2pgrouting)
 docker cp "$CID":/usr/share/osm2pgrouting/mapconfig.xml ./mapconfig.xml
 ```
 
+Exécutez ensuite la commande suivante :
+
 ```bash
 docker run --rm \
   --network ensg_sdi \
